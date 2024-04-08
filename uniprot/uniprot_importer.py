@@ -6,7 +6,7 @@ import datetime
 import argparse
 
 # Uniprot data fetch URL
-url = 'https://rest.uniprot.org/uniprotkb/search?query=accession:P83916&fields=accession,cc_function,xref_mim,xref_hgnc,gene_primary' # To be changed
+url = 'https://rest.uniprot.org/uniprotkb/search?query=(organism_id:9606)&(reviewed:true)&fields=accession,cc_function,xref_mim,xref_hgnc,gene_primary&size=500' # To be changed
 
 # Configuration to fetch Uniprot data
 re_next_link = re.compile(r'<(.+)>; rel="next"')
