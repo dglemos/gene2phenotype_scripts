@@ -98,7 +98,7 @@ def insert_uniprot_data(db_host, db_port, db_name, db_user, db_password, total_i
         if item["HGNC"] in identifier_to_locus_id_map:
             cursor.execute(insert_sql, [item["accession"],
                                   identifier_to_locus_id_map[item["HGNC"]],
-                                  int(item["HGNC"][5:]), # To be changed once column datatype changes
+                                  item["HGNC"],
                                   item["gene_symbol"],
                                   item["MIM"],
                                   item["protein_function"],
