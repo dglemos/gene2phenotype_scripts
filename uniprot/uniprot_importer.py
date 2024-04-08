@@ -46,19 +46,30 @@ def get_batch(batch_url):
         yield response
         batch_url = get_next_link(response.headers)
 
+def get_database_value(database, dataItem):
+    if "uniProtKBCrossReferences" in dataItem and len(dataItem["uniProtKBCrossReferences"]):
+        for item in dataItem["uniProtKBCrossReferences"]:
+            if item["database"] == database:
+                return item["id"]
+    return None
+
+def is_protein_function_available(dataItem):
+    return "comments" in dataItem and len(dataItem["comments"])!=0 and "texts" in dataItem["comments"][0] and len(dataItem["comments"][0]["texts"])!=0 and "value" in dataItem["comments"][0]["texts"][0];
+
 # Function to fetch Uniprot data
 def fetch_all_data():
     total_items = []
     for batch in get_batch(url):
         current_batch_json = batch.json()
         for item in current_batch_json["results"]:
-            if "comments" in item and len(item["comments"])!=0 and "texts" in item["comments"][0] and len(item["comments"][0]["texts"])!=0 and "value" in item["comments"][0]["texts"][0]:
+            # If protein function or HGNC id is not available then dont consider the data entry
+            if is_protein_function_available(item) and get_database_value("HGNC", item) is not None:
                 current_item = {}
                 current_item["gene_symbol"] = item["genes"][0]["geneName"]["value"]
                 current_item["accession"] = item["primaryAccession"]
                 current_item["protein_function"] = item["comments"][0]["texts"][0]["value"]
-                current_item["HGNC"] = item["uniProtKBCrossReferences"][0]["id"]
-                current_item["MIM"] = item["uniProtKBCrossReferences"][1]["id"]
+                current_item["HGNC"] = get_database_value("HGNC", item)
+                current_item["MIM"] = get_database_value("MIM", item)
                 total_items.append(current_item)
     print("Uniprot data successfully fetched via Uniprot API.")
     return total_items
