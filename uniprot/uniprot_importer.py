@@ -1,3 +1,16 @@
+"""
+This script imports required gene information from Uniprot via the Uniprot REST API.
+
+Usage: python uniprot_importer.py [OPTION]
+
+Options:
+
+    --g2p_host    G2P database host (Required)
+    --g2p_port    G2P database host port (Required)
+    --g2p_database    G2P database name (Required)
+    --g2p_user    G2P database Username (Required)
+    --g2p_password    G2P database Password (default: '') (Optional)
+"""
 import requests
 from requests.adapters import HTTPAdapter, Retry
 import re
@@ -14,6 +27,9 @@ retries = Retry(total=5, backoff_factor=0.25, status_forcelist=[500, 502, 503, 5
 session = requests.Session()
 session.mount("https://", HTTPAdapter(max_retries=retries))
 
+# Global variable to store Uniprot release version
+uniprot_release = None
+
 def get_next_link(headers):
     if "Link" in headers:
         match = re_next_link.match(headers["Link"])
@@ -21,26 +37,29 @@ def get_next_link(headers):
             return match.group(1)
 
 def get_batch(batch_url):
+    global uniprot_release
     while batch_url:
         response = session.get(batch_url)
         response.raise_for_status()
-        total = response.headers["x-total-results"]
-        yield response, total
+        if uniprot_release is None:
+            uniprot_release = response.headers["X-UniProt-Release"]
+        yield response
         batch_url = get_next_link(response.headers)
 
 # Function to fetch Uniprot data
 def fetch_all_data():
     total_items = []
-    for batch, total in get_batch(url):
+    for batch in get_batch(url):
         current_batch_json = batch.json()
         for item in current_batch_json["results"]:
-            current_item = {}
-            current_item["gene_symbol"] = item["genes"][0]["geneName"]["value"]
-            current_item["accession"] = item["primaryAccession"]
-            current_item["protein_function"] = item["comments"][0]["texts"][0]["value"]
-            current_item["HGNC"] = item["uniProtKBCrossReferences"][0]["id"]
-            current_item["MIM"] = item["uniProtKBCrossReferences"][1]["id"]
-            total_items.append(current_item)
+            if "comments" in item and len(item["comments"])!=0 and "texts" in item["comments"][0] and len(item["comments"][0]["texts"])!=0 and "value" in item["comments"][0]["texts"][0]:
+                current_item = {}
+                current_item["gene_symbol"] = item["genes"][0]["geneName"]["value"]
+                current_item["accession"] = item["primaryAccession"]
+                current_item["protein_function"] = item["comments"][0]["texts"][0]["value"]
+                current_item["HGNC"] = item["uniProtKBCrossReferences"][0]["id"]
+                current_item["MIM"] = item["uniProtKBCrossReferences"][1]["id"]
+                total_items.append(current_item)
     print("Uniprot data successfully fetched via Uniprot API.")
     return total_items
 
@@ -91,7 +110,7 @@ def insert_uniprot_data(db_host, db_port, db_name, db_user, db_password, total_i
                               0,
                               'Import Uniprot data',
                               source_ids['UniProt'],
-                              'ensembl_111'])
+                              uniprot_release])
     db.commit()
     db.close()
     print("Uniprot data successfully inserted into G2P database.")
