@@ -54,7 +54,7 @@ def get_database_value(database, dataItem):
     return None
 
 def is_protein_function_available(dataItem):
-    return "comments" in dataItem and len(dataItem["comments"])!=0 and "texts" in dataItem["comments"][0] and len(dataItem["comments"][0]["texts"])!=0 and "value" in dataItem["comments"][0]["texts"][0];
+    return "comments" in dataItem and len(dataItem["comments"])!=0 and "texts" in dataItem["comments"][0] and len(dataItem["comments"][0]["texts"])!=0 and "value" in dataItem["comments"][0]["texts"][0]
 
 # Function to fetch Uniprot data
 def fetch_all_data():
@@ -62,7 +62,7 @@ def fetch_all_data():
     for batch in get_batch(url):
         current_batch_json = batch.json()
         for item in current_batch_json["results"]:
-            # If protein function or HGNC id is not available then dont consider the data entry
+            # If protein function or HGNC id is not available then don't consider the data entry
             if is_protein_function_available(item) and get_database_value("HGNC", item) is not None:
                 current_item = {}
                 current_item["gene_symbol"] = item["genes"][0]["geneName"]["value"]
