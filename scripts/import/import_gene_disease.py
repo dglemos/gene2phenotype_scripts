@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import os
-import sys
+import re
 import argparse
 import datetime
 import MySQLdb
@@ -52,7 +52,7 @@ def get_mim_gene_diseases(db_host, db_port, db_name, user, password):
 """
     Insert OMIM gene disease data into G2P database
 """
-def insert_gene_diseases(db_host, db_port, db_name, user, password, gene_diseases):
+def insert_gene_diseases(db_host, db_port, db_name, user, password, gene_diseases, version):
     sql_gene = f""" SELECT l.id, i.identifier FROM locus l
                     LEFT JOIN locus_identifier i on i.locus_id = l.id
                     LEFT JOIN source s on s.id = i.source_id
@@ -99,9 +99,9 @@ def insert_gene_diseases(db_host, db_port, db_name, user, password, gene_disease
     cursor.execute(sql_meta, ['import_gene_disease',
                               datetime.datetime.now(),
                               0,
-                              'Import OMIM gene disease associations',
+                              'Import OMIM gene disease associations from Ensembl',
                               source_ids['Ensembl'],
-                              'ensembl_111'])
+                              version])
 
     db.commit()
     db.close()
@@ -196,7 +196,7 @@ def get_mondo_gene_diseases(file):
 """
     Insert Mondo gene disease data into G2P database
 """
-def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_diseases):
+def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_diseases, mondo_version):
     sql_gene = """ SELECT l.id FROM locus l
                     LEFT JOIN locus_identifier i on i.locus_id = l.id
                     LEFT JOIN source s on s.id = i.source_id
@@ -243,10 +243,29 @@ def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
                               0,
                               'Import Mondo gene disease associations',
                               source_id,
-                              ''])
+                              mondo_version])
 
     db.commit()
     db.close()
+
+"""
+    Fetch the Mondo data version from the owl file
+"""
+def fetch_mondo_version(file):
+    version = None
+
+    with open(file, "r") as fh:
+        for event, elem in ET.iterparse(fh, events=("start", "end")):
+            if event == "start" and elem.tag == "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF":
+                for i in elem.iter():
+                    if i.tag == "{http://www.w3.org/2002/07/owl#}versionIRI":
+                        resource = i.get("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource")
+                        version = re.search("[0-9]+\\-[0-9]+\\-[0-9]+", resource)
+                        print(version.group())
+
+                return version
+
+    return version
 
 
 def main():
@@ -287,9 +306,12 @@ def main():
         gene_diseases = get_mim_gene_diseases(db_host, int(db_port), db_name, user, password)
         print("Getting OMIM gene-disease associations... done")
 
+        # Get version from Ensembl db name
+        version = re.search("[0-9]+", db_name)
+
         # Insert OMIM gene-disease data into G2P db
         print("Inserting OMIM gene-disease associations into G2P...")
-        insert_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, gene_diseases)
+        insert_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, gene_diseases, version.group())
         print("Inserting OMIM gene-disease associations into G2P... done")
 
     if import_mondo == 1:
@@ -300,6 +322,9 @@ def main():
             
             The owl file can be downloaded from https://mondo.monarchinitiative.org/pages/download/
         """
+
+        # Fetch Mondo version from file
+        mondo_version = fetch_mondo_version(mondo_file)
 
         # Retrive Mondo gene-disease from Mondo owl file
         print("Getting Mondo gene-disease associations...")
@@ -316,7 +341,7 @@ def main():
             
         # Insert Mondo gene-disease data into G2P db
         print("Inserting Mondo gene-disease associations into G2P...")
-        insert_mondo_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, new_mondo_data)
+        insert_mondo_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, new_mondo_data, mondo_version)
         print("Inserting Mondo gene-disease associations into G2P... done")
 
 
