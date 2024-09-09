@@ -261,9 +261,7 @@ def fetch_mondo_version(file):
                     if i.tag == "{http://www.w3.org/2002/07/owl#}versionIRI":
                         resource = i.get("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource")
                         version = re.search("[0-9]+\\-[0-9]+\\-[0-9]+", resource)
-                        print(version.group())
-
-                return version
+                        return version.group()
 
     return version
 
