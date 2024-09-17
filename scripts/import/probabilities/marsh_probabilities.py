@@ -1,10 +1,32 @@
 import os
-import re 
+import re
+import sys
 import argparse
-import MySQLdb 
+import MySQLdb
 
+attrib_mapping = {
+    "gain_of_function_mp" : 63,
+    "loss_of_function_mp" : 64,
+    "dominant_negative_mp" : 65
+}
 
 def get_details_from_file(file):
+    """
+        Extracts lines from a file, skipping the header.
+
+        This function reads the contents of a file, skipping the first line
+        (assumed to be a header) and returning the remaining lines.
+
+        Args:
+            file (str): The path to the file to be read.
+
+        Returns:
+            None: This function does not return a value, but it stores the
+            lines after the header in the variable `skip_header`.
+
+        Example:
+            get_details_from_file("data.txt")
+    """
     with open(file, "r") as opened_file:
         lines = opened_file.readlines()
         skip_header = lines[1:]
@@ -13,6 +35,31 @@ def get_details_from_file(file):
     return skip_header
 
 def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
+    """
+        Retrieves locus IDs from a gene-to-phenotype (G2P) database and appends them to the input list.
+
+        This function connects to a MySQL database and executes a query to fetch the locus ID
+        for each gene symbol (first item in each line) from the 'locus' table. It appends the
+        fetched locus ID to the corresponding line in `list_lines`. If a locus ID is not found,
+        it appends `None`.
+
+        Args:
+            list_lines (list of str): A list of strings or lists, where each element contains
+                                  a gene symbol as the first item.
+            host (str): The database host address.
+            port (int): The port number to connect to the database.
+            db (str): The name of the database.
+            password (str): The password for authenticating with the database.
+            user (str): The username for authenticating with the database.
+
+        Returns:
+            list: The modified `list_lines` with locus IDs appended to each line.
+              If no locus ID is found for a gene symbol, `None` is appended.
+
+        Example:
+            list_lines = ["BRCA1 info", "TP53 info"]
+            updated_lines = get_locus_id_from_g2p_db(list_lines, "localhost", 3306, "g2p_db", "password", "user")
+    """
 
     get_locus_source = """ SELECT id from locus where name = %s
 """
@@ -29,6 +76,7 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
     
 
             if locus_id:
+                print(locus_id)
                 line.append(locus_id[0])
             else:
                 line.append(None)
@@ -43,16 +91,42 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
 
 
 def get_hgnc_id_from_g2p_db(list_lines, host, port, db, password, user):
+
+    """
+        Retrieves HGNC identifiers from the gene-to-phenotype (G2P) database and appends them to the input list.
+
+        This function connects to a MySQL database and executes a query to fetch the HGNC identifier
+        from the 'locus_identifier' table for each corresponding locus ID in the input `list_lines`.
+        It appends the HGNC identifier (if found) or `None` (if not found) to each line in `list_lines`.
+
+        Args:
+            list_lines (list of list): A list of lists, where each inner list contains at least 5 elements,
+                                   with the 5th element being the `locus_id`.
+            host (str): The database host address.
+            port (int): The port number to connect to the database.
+            db (str): The name of the database.
+            password (str): The password for authenticating with the database.
+            user (str): The username for authenticating with the database.
+
+        Returns:
+            list: The modified `list_lines` with HGNC identifiers appended to each line.
+              If no HGNC identifier is found or `locus_id` is `None`, `None` is appended.
+
+        Example:
+            list_lines = [["gene1", "info1", "info2", "info3", 123], ["gene2", "info1", "info2", "info3", None]]
+            updated_lines = get_hgnc_id_from_g2p_db(list_lines, "localhost", 3306, "g2p_db", "password", "user")
+    """
     
-    get_locus_identifier = """ SELECT id from locus_identifier where locus_id = %s """
+    get_locus_identifier = """ SELECT id from locus_identifier where locus_id = %s and identifier like %s """
 
     database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
     cursor = database.cursor()
 
+    identifier = "%HGNC:%"
     for i,line in enumerate(list_lines):
         locus_id = line[4]
         if locus_id is not None:
-            cursor.execute(get_locus_identifier, (locus_id,))
+            cursor.execute(get_locus_identifier, (locus_id, identifier))
             locus_identifer_id = cursor.fetchone()
 
             if locus_identifer_id:
@@ -70,10 +144,69 @@ def get_hgnc_id_from_g2p_db(list_lines, host, port, db, password, user):
     return list_lines
 
 
-def insert_into_gene_stats(list_lines, host, port, db, password, user):
-    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_id, gene_symbol, hgnc_id, score, source_id) VALUES (%s, %s, %s, %s, %s)
+def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
+
+    """
+        Inserts gene-related data into the `gene_stats` table of a MySQL database.
+
+        Parameters:
+        ----------
+        list_lines : list of lists
+            A list containing gene-related data, where each sublist represents a row of values with the following elements:
+            [0]: gene_symbol (str)
+            [1]: Not used in the query
+            [2]: score (float)
+            [3]: Not used in the query
+            [4]: gene_id (int)
+            [5]: locus_identifier_id (int or None)
+        
+        host : str
+            The hostname or IP address of the MySQL server.
+
+        port : int
+            The port number on which the MySQL server is listening.
+
+        db : str
+            The name of the database to connect to.
+
+        password : str
+            The password for the database user.
+
+        user : str
+            The username for authenticating with the MySQL server.
+
+        attrib : str
+            An attribute key that will be mapped to a specific description ID from a predefined `attrib_mapping` dictionary.
+            This is used as the `description_id` in the query.
+
+        Functionality:
+        -------------
+        - Connects to the MySQL database using the provided connection details.
+        - Retrieves the `source_id` corresponding to the 'Marsh Mechanism probabilities' source from the `source` table.
+        - Iterates over each sublist in `list_lines`, and for each line where the `locus_identifier_id` (index 5) is not None,
+        it inserts the gene data into the `gene_stats` table using the `insert_into_gene_stats_query`.
+        - Closes the database connection after all the insert operations are completed.
+
+        Example usage:
+        --------------
+        list_lines = [
+            ['gene1', 'x', 0.85, 'x', 101, 201],
+            ['gene2', 'y', 0.67, 'y', 102, None],
+            ['gene3', 'z', 0.92, 'z', 103, 202]
+        ]
+        
+        insert_into_gene_stats(list_lines, 'localhost', 3306, 'genedb', 'password123', 'user123', 'attrib_key')
+        
+        Notes:
+        -----
+        The function assumes that the table and column names, as well as the structure of the input list, align with the schema.
+    """
+
+    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, locus_identifier_id, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s, %s)
 """
     get_source_query = """ SELECT id from source where name = 'Marsh Mechanism probabilities'"""
+
+    attrib_value = attrib_mapping.get(attrib)
 
     database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
     cursor = database.cursor()
@@ -85,7 +218,7 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user):
 
     for line in list_lines:
         if line[5] is not None:
-            cursor.execute(insert_into_gene_stats_query, (line[4], line[0], line[5], line[2], source_id))
+            cursor.execute(insert_into_gene_stats_query, (line[0], line[5], line[4], line[2], source_id, attrib_value ))
 
     cursor.close()
     database.close()
@@ -93,6 +226,60 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user):
 
 
 def main():
+    """
+        Main function to import gene probability data into the gene_stats table of a G2P database.
+
+        This script parses command-line arguments to obtain the necessary parameters for connecting to a 
+        MySQL database, retrieves data from a specified file, processes it, and then inserts the data into 
+        the `gene_stats` table.
+
+        Command-line Arguments:
+        -----------------------
+        --host : str (required)
+            The hostname or IP address of the database server where the data will be imported.
+
+        -p, --port : int (required)
+            The port number on which the database server is listening.
+
+        -d, --database : str (required)
+            The name of the G2P database into which the data will be imported.
+
+        -pwd, --password : str (required)
+            The password for the database user.
+
+        -u, --user : str (required)
+            The username for connecting to the G2P database.
+
+        -f, --file : str (required)
+            Path to the file containing the gene probability data. The file can be a single file or multiple 
+            files separated by commas.
+
+        -a, --attrib : str (required)
+            The attribute type in the file being inserted. Allowed types include:
+            'gain_of_function_mp', 'loss_of_function_mp', and 'dominant_negative_mp'.
+            This argument will be used to map the `attrib` value to the corresponding description ID.
+
+        Functionality:
+        -------------
+        1. Parses the command-line arguments to obtain the necessary database connection details, file path, and attribute type.
+        2. Checks if the `attrib` value is valid by confirming that it exists in the `attrib_mapping` dictionary.
+        If the attribute type is not valid, the script exits with an error message.
+        3. Reads the file and retrieves its contents using `get_details_from_file()`.
+        4. Obtains the necessary `locus_identifier_id` values from the G2P database using the `get_locus_id_from_g2p_db()` function.
+        5. Retrieves the HGNC (HUGO Gene Nomenclature Committee) locus identifier from the G2P database using the `get_hgnc_id_from_g2p_db()` function.
+        6. Finally, the processed data is inserted into the `gene_stats` table using the `insert_into_gene_stats()` function.
+
+        Example usage:
+        --------------
+        python script.py --host localhost --port 3306 --database g2p_db --password secret_pwd --user db_user --file data.csv --attrib gain_of_function_mp
+
+        Notes:
+        -----
+        - Ensure that the database and tables are correctly configured before running the script.
+        - The file provided should follow the format expected by the script for proper processing.
+        - This script requires the `attrib_mapping` dictionary to be predefined, which maps attribute types to description IDs.
+    """
+
     parser = argparse.ArgumentParser(description="This script is used to import the probabilities from a file and imports it to the gene_stats table in the G2P DB")
     parser.add_argument("--host", required=True, help="Host of the database were the data is to be imported")
     parser.add_argument("-p", "--port", required=True, help="Port information of the database to be imported")
@@ -100,6 +287,7 @@ def main():
     parser.add_argument("-pwd", "--password", required=True, help="Paaword for the G2P database information")
     parser.add_argument("-u", "--user", required=True, help="User information for the G2P database")
     parser.add_argument("-f", "--file", required=True, help="File containing the information for the score, can either be one file or files seperated by ,")
+    parser.add_argument('-a', "--attrib", required=True, help="The attrib type in the file you are trying to insert. Allowed types are gain_of_function_mp, loss_of_function_mp, dominant_negative_mp ")
 
     args = parser.parse_args()
 
@@ -110,8 +298,13 @@ def main():
     user = args.user
     file = args.file
     port = int(port)
+    attrib = args.attrib
 
-    if file: 
+    if attrib not in attrib_mapping:
+        print("The type applied is not permitted")
+        sys.exit()
+
+    if file:
         print("Getting details from file")
         file_lines = get_details_from_file(file)
         print("Getting locus id from the G2P DB")
@@ -119,7 +312,7 @@ def main():
         print("Getting HGNC locus identifier from G2P DB")
         get_hgnc_id_from_g2p_db(file_lines, host, port, db, pwd, user)
         print("Inserting into gene stats")
-        insert_into_gene_stats(file_lines, host, port, db, pwd, user)
+        insert_into_gene_stats(file_lines, host, port, db, pwd, user, attrib)
 
 
 
