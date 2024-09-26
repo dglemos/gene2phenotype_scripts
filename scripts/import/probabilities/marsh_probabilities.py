@@ -65,7 +65,8 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
 
     get_locus_source = """ SELECT id from locus where name = %s
 """
-
+    get_locus_attrib_source = """SELECT locus_id from locus_attrib where value = %s
+"""
     database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
     cursor = database.cursor()
 
@@ -74,11 +75,15 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
             line = line.split()
             gene_symbol = line[0]
             cursor.execute(get_locus_source, (gene_symbol,))
+            cursor.execute(get_locus_attrib_source, (gene_symbol,))
             locus_id = cursor.fetchone()
+            locus_attrib_id = cursor.fetchone()
     
 
             if locus_id:
                 line.append(locus_id[0])
+            elif locus_attrib_id:
+                line.append(locus_attrib_id[0])
             else:
                 line.append(None)
             
