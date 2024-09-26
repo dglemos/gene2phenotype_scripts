@@ -78,7 +78,6 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
     
 
             if locus_id:
-                print(locus_id)
                 line.append(locus_id[0])
             else:
                 line.append(None)
