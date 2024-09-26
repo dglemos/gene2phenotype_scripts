@@ -5,13 +5,14 @@ from datetime import datetime
 import argparse
 import MySQLdb
 
-attrib_mapping = {
-    "gain_of_function_mp" : 63,
-    "loss_of_function_mp" : 64,
-    "dominant_negative_mp" : 65
-}
+attrib_mapping = [
+    "gain_of_function_mp",
+    "loss_of_function_mp",
+    "dominant_negative_mp",
+]
 
 key = "Badonyi_score"
+
 def get_details_from_file(file):
     """
         Extracts lines from a file, skipping the header.
@@ -32,7 +33,6 @@ def get_details_from_file(file):
     with open(file, "r") as opened_file:
         lines = opened_file.readlines()
         skip_header = lines[1:]
-
     
     return skip_header
 
@@ -94,6 +94,46 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
 
 
     return list_lines
+
+def get_attrib_ids(host, port, db, password, user, attrib):
+    """
+        Retrieve the ID corresponding to a specific attribute value from a MySQL database.
+
+        Parameters:
+        ----------
+        host : str
+            The hostname or IP address of the MySQL server.
+        port : int
+            The port number on which the MySQL server is listening.
+        db : str
+            The name of the database to connect to.
+        password : str
+            The password to authenticate with the MySQL server.
+        user : str
+            The username to authenticate with the MySQL server.
+        attrib : str
+            The attribute value to search for in the 'attrib' table.
+
+        Returns:
+        -------
+        int
+            The ID associated with the given attribute value from the 'attrib' table.
+
+        Raises:
+        -------
+        MySQLdb.Error
+            If there is any error while connecting to the database or executing the query.
+    """
+    get_attrib_id_query = """SELECT id from attrib where value = %s"""
+
+    database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
+    cursor = database.cursor()
+
+    cursor.execute(get_attrib_id_query, (attrib,))
+
+    attrib_id = cursor.fetchone()
+
+    return attrib_id[0]
 
 
 def insert_details_into_meta(host, port, db, password, user):
@@ -383,14 +423,14 @@ def main():
     if attrib not in attrib_mapping:
         print("The type applied is not permitted")
         sys.exit()
+    else:
+        attrib = get_attrib_ids(host,port,db,pwd,user,attrib)
 
     if file:
         print("Getting details from file")
         file_lines = get_details_from_file(file)
         print("Getting locus id from the G2P DB")
         get_locus_id_from_g2p_db(file_lines, host, port, db, pwd, user)
-        print("Getting HGNC locus identifier from G2P DB")
-        get_hgnc_id_from_g2p_db(file_lines, host, port, db, pwd, user)
         print("Inserting into gene stats")
         insert_into_gene_stats(file_lines, host, port, db, pwd, user, attrib)
 
