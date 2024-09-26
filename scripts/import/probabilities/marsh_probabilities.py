@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+from datetime import datetime
 import argparse
 import MySQLdb
 
@@ -10,6 +11,7 @@ attrib_mapping = {
     "dominant_negative_mp" : 65
 }
 
+key = "Badonyi_score"
 def get_details_from_file(file):
     """
         Extracts lines from a file, skipping the header.
@@ -131,7 +133,7 @@ def get_hgnc_id_from_g2p_db(list_lines, host, port, db, password, user):
 
             if locus_identifer_id:
                 line.append(locus_identifer_id[0])
-            else: 
+            else:
                 line.append(None)
         else:
             line.append(None)
@@ -143,6 +145,137 @@ def get_hgnc_id_from_g2p_db(list_lines, host, port, db, password, user):
 
     return list_lines
 
+def insert_details_into_meta(host, port, db, password, user):
+    """
+        Inserts details into the 'meta' table of the given database.
+
+        This function establishes a connection to a MySQL database and inserts a record into the 'meta' table
+        with the specified key, current timestamp, description, version, and source ID. The source ID is 
+        retrieved via the `get_source_details` function.
+
+        Parameters:
+        ----------
+        host : str
+            The hostname or IP address of the MySQL database server.
+        
+        port : int
+            The port number used to connect to the MySQL database server.
+        
+        db : str
+            The name of the MySQL database where the 'meta' table resides.
+        
+        password : str
+            The password to authenticate the MySQL user.
+        
+        user : str
+            The username to authenticate with the MySQL database server.
+
+        Other Variables:
+        ----------
+        source_id : int
+            The ID obtained from the source details function used to populate the 'source_id' column.
+        
+        description : str
+            A brief description of the entry (default: "Baydoni & Marsh probabilities").
+        
+        formatted_datetime : str
+            The current date and time in the format 'YYYY-MM-DD HH:MM:SS.microseconds'.
+        
+        version : int
+            The version of the entry being inserted (default: 1).
+        
+        insert_into_meta_query : str
+            The SQL query used to insert data into the 'meta' table.
+
+        Raises:
+        ----------
+        MySQLdb.Error
+            If any error occurs during the database connection or query execution.
+        
+        Example:
+        ----------
+        insert_details_into_meta('localhost', 3306, 'mydatabase', 'password123', 'root')
+
+        This inserts a record into the 'meta' table of the 'mydatabase' database using the current timestamp, 
+        a static description, and source details retrieved from the database.
+
+    """
+    
+    source_id = get_source_details(host, port, db, password, user)
+    description = "Baydoni & Marsh probabilities"
+    
+    insert_into_meta_query = """ INSERT into meta(key, date_update, description, version, source_id) VALUES (%s, %s, %s, %s, %s)
+
+"""
+    current_datetime = datetime.now()
+
+
+    formatted_datetime = current_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')
+    version = 1
+    database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
+    cursor = database.cursor()
+    
+    cursor.execute(insert_into_meta_query, (key, formatted_datetime, description, version, source_id ))
+    cursor.close()
+    database.close()
+
+    
+
+def get_source_details(host, port, db, password, user):
+    """
+        Retrieves the source ID from the 'source' table in the database.
+
+        This function connects to a MySQL database and retrieves the `id` of the source where the `name` 
+        matches 'Marsh Mechanism probabilities'. It returns the corresponding `source_id`.
+
+        Parameters:
+        ----------
+        host : str
+            The hostname or IP address of the MySQL database server.
+        
+        port : int
+            The port number used to connect to the MySQL database server.
+        
+        db : str
+            The name of the MySQL database containing the 'source' table.
+        
+        password : str
+            The password to authenticate the MySQL user.
+        
+        user : str
+            The username to authenticate with the MySQL database server.
+
+        Returns:
+        ----------
+        source_id : int
+            The ID of the source with the name 'Marsh Mechanism probabilities'.
+
+        Raises:
+        ----------
+        MySQLdb.Error
+            If any error occurs during the database connection or query execution.
+
+        Example:
+        ----------
+        source_id = get_source_details('localhost', 3306, 'mydatabase', 'password123', 'root')
+
+        This retrieves the `id` from the 'source' table where `name` equals 'Marsh Mechanism probabilities'
+        and returns the corresponding `source_id`.
+    """
+
+    get_source_query = """ SELECT id from source where name = 'Marsh Mechanism probabilities'"""
+
+    database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
+    cursor = database.cursor()
+
+    cursor.execute(get_source_query)
+    source_id = cursor.fetchone()
+    source_id = source_id[0]
+
+    cursor.close()
+    database.close()
+
+    return source_id
 
 def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
 
@@ -204,16 +337,12 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
 
     insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, locus_identifier_id, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s, %s)
 """
-    get_source_query = """ SELECT id from source where name = 'Marsh Mechanism probabilities'"""
+   
 
     attrib_value = attrib_mapping.get(attrib)
 
     database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
     cursor = database.cursor()
-
-    cursor.execute(get_source_query)
-    source_id = cursor.fetchone()
-    source_id = source_id[0]
 
 
     for line in list_lines:
