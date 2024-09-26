@@ -282,9 +282,9 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
         The function assumes that the table and column names, as well as the structure of the input list, align with the schema.
     """
 
-    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, locus_identifier_id, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s, %s)
+    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s, %s)
 """
-   
+    source_id = get_source_details(host, port, db, password, user)
 
     attrib_value = attrib_mapping.get(attrib)
 
@@ -294,7 +294,7 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
 
     for line in list_lines:
         if line[5] is not None:
-            cursor.execute(insert_into_gene_stats_query, (line[0], line[5], line[4], line[2], source_id, attrib_value ))
+            cursor.execute(insert_into_gene_stats_query, (line[0], line[4], line[2], source_id, attrib_value ))
 
     cursor.close()
     database.close()
