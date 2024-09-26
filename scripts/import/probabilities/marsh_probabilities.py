@@ -92,59 +92,6 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
     return list_lines
 
 
-def get_hgnc_id_from_g2p_db(list_lines, host, port, db, password, user):
-
-    """
-        Retrieves HGNC identifiers from the gene-to-phenotype (G2P) database and appends them to the input list.
-
-        This function connects to a MySQL database and executes a query to fetch the HGNC identifier
-        from the 'locus_identifier' table for each corresponding locus ID in the input `list_lines`.
-        It appends the HGNC identifier (if found) or `None` (if not found) to each line in `list_lines`.
-
-        Args:
-            list_lines (list of list): A list of lists, where each inner list contains at least 5 elements,
-                                   with the 5th element being the `locus_id`.
-            host (str): The database host address.
-            port (int): The port number to connect to the database.
-            db (str): The name of the database.
-            password (str): The password for authenticating with the database.
-            user (str): The username for authenticating with the database.
-
-        Returns:
-            list: The modified `list_lines` with HGNC identifiers appended to each line.
-              If no HGNC identifier is found or `locus_id` is `None`, `None` is appended.
-
-        Example:
-            list_lines = [["gene1", "info1", "info2", "info3", 123], ["gene2", "info1", "info2", "info3", None]]
-            updated_lines = get_hgnc_id_from_g2p_db(list_lines, "localhost", 3306, "g2p_db", "password", "user")
-    """
-    
-    get_locus_identifier = """ SELECT id from locus_identifier where locus_id = %s and identifier like %s """
-
-    database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
-    cursor = database.cursor()
-
-    identifier = "%HGNC:%"
-    for i,line in enumerate(list_lines):
-        locus_id = line[4]
-        if locus_id is not None:
-            cursor.execute(get_locus_identifier, (locus_id, identifier))
-            locus_identifer_id = cursor.fetchone()
-
-            if locus_identifer_id:
-                line.append(locus_identifer_id[0])
-            else:
-                line.append(None)
-        else:
-            line.append(None)
-            
-            list_lines[i] = line
-
-    cursor.close()
-    database.close()
-
-    return list_lines
-
 def insert_details_into_meta(host, port, db, password, user):
     """
         Inserts details into the 'meta' table of the given database.
