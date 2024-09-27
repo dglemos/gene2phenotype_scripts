@@ -1,7 +1,7 @@
 import os
 import re
 import sys
-from datetime import datetime
+import datetime
 import argparse
 import MySQLdb
 
@@ -11,7 +11,7 @@ attrib_mapping = [
     "dominant_negative_mp",
 ]
 
-key = "Badonyi_score"
+KEY = "Badonyi_score"
 
 def get_details_from_file(file):
     """
@@ -75,15 +75,15 @@ def get_locus_id_from_g2p_db(list_lines, host, port, db, password, user):
             line = line.split()
             gene_symbol = line[0]
             cursor.execute(get_locus_source, (gene_symbol,))
-            cursor.execute(get_locus_attrib_source, (gene_symbol,))
             locus_id = cursor.fetchone()
-            locus_attrib_id = cursor.fetchone()
     
 
             if locus_id:
                 line.append(locus_id[0])
-            elif locus_attrib_id:
-                line.append(locus_attrib_id[0])
+            elif not locus_id:
+                cursor.execute(get_locus_attrib_source, (gene_symbol,))
+                locus_attrib_id = cursor.fetchone()
+                line.append(locus_attrib_id[0] if locus_attrib_id else None)
             else:
                 line.append(None)
             
@@ -136,7 +136,7 @@ def get_attrib_ids(host, port, db, password, user, attrib):
     return attrib_id[0]
 
 
-def insert_details_into_meta(host, port, db, password, user):
+def insert_details_into_meta(host, port, db, password, user, attrib):
     """
         Inserts details into the 'meta' table of the given database.
 
@@ -195,18 +195,18 @@ def insert_details_into_meta(host, port, db, password, user):
     source_id = get_source_details(host, port, db, password, user)
     description = "Baydoni & Marsh probabilities"
     
-    insert_into_meta_query = """ INSERT into meta(key, date_update, description, version, source_id) VALUES (%s, %s, %s, %s, %s)
+    insert_into_meta_query = """ INSERT into meta(`key`, date_update, description, version, source_id, is_public) VALUES (%s, %s, %s, %s, %s, %s)
 
 """
-    current_datetime = datetime.now()
+    #current_datetime = datetime.now()
+    meta_key = KEY + "_" + attrib
 
-
-    formatted_datetime = current_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')
+    #formatted_datetime = current_datetime.strftime('%Y-%m-%d %H:%M:%S.%f')
     version = 1
     database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
     cursor = database.cursor()
     
-    cursor.execute(insert_into_meta_query, (key, formatted_datetime, description, version, source_id ))
+    cursor.execute(insert_into_meta_query, (meta_key, datetime.datetime.now(), description, version, source_id, 0))
     cursor.close()
     database.close()
 
@@ -326,18 +326,18 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
         The function assumes that the table and column names, as well as the structure of the input list, align with the schema.
     """
 
-    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s, %s)
+    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s)
 """
     source_id = get_source_details(host, port, db, password, user)
 
-    attrib_value = attrib_mapping.get(attrib)
+    attrib_value = get_attrib_ids(host,port,db,password,user,attrib)
 
     database = MySQLdb.connect(host=host,port=port,user=user,passwd=password,db=db)
     cursor = database.cursor()
 
 
     for line in list_lines:
-        if line[5] is not None:
+        if line[4] is not None:
             cursor.execute(insert_into_gene_stats_query, (line[0], line[4], line[2], source_id, attrib_value ))
 
     cursor.close()
@@ -423,8 +423,6 @@ def main():
     if attrib not in attrib_mapping:
         print("The type applied is not permitted")
         sys.exit()
-    else:
-        attrib = get_attrib_ids(host,port,db,pwd,user,attrib)
 
     if file:
         print("Getting details from file")
@@ -433,7 +431,10 @@ def main():
         get_locus_id_from_g2p_db(file_lines, host, port, db, pwd, user)
         print("Inserting into gene stats")
         insert_into_gene_stats(file_lines, host, port, db, pwd, user, attrib)
-
+        print("Inserting into meta table")
+        insert_details_into_meta(host, port, db, pwd, user, attrib)
+        print("File has been loaded")
+        sys.exit
 
 
 if __name__ == '__main__':
