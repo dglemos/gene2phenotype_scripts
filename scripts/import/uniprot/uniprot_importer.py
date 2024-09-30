@@ -59,7 +59,7 @@ def get_database_value(database, dataItem, gene_symbol):
                 return item["id"]
 
             # This checks if there is a HGNC ID
-            elif gene_symbol is None:
+            elif item["database"] == database and gene_symbol is None:
                 return item["id"]
 
     return None
