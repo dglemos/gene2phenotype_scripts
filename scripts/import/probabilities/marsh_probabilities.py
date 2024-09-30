@@ -339,6 +339,8 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
     for line in list_lines:
         if line[4] is not None:
             cursor.execute(insert_into_gene_stats_query, (line[0], line[4], line[2], source_id, attrib_value ))
+        else: 
+            print(line[0])
 
     cursor.close()
     database.close()
@@ -404,7 +406,7 @@ def main():
     parser.add_argument("--host", required=True, help="Host of the database were the data is to be imported")
     parser.add_argument("-p", "--port", required=True, help="Port information of the database to be imported")
     parser.add_argument("-d", "--database", required=True, help="G2P Database to import the information into")
-    parser.add_argument("-pwd", "--password", required=True, help="Paaword for the G2P database information")
+    parser.add_argument("-pwd", "--password", required=True, help="Password for the G2P database information")
     parser.add_argument("-u", "--user", required=True, help="User information for the G2P database")
     parser.add_argument("-f", "--file", required=True, help="File containing the information for the score, can either be one file or files seperated by ,")
     parser.add_argument('-a', "--attrib", required=True, help="The attrib type in the file you are trying to insert. Allowed types are gain_of_function_mp, loss_of_function_mp, dominant_negative_mp ")
