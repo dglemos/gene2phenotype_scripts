@@ -19,7 +19,7 @@ import datetime
 import argparse
 
 # Uniprot data fetch URL
-url = 'https://rest.uniprot.org/uniprotkb/search?query=organism_id:9606+AND+reviewed:true&fields=accession,cc_function,xref_mim,xref_hgnc,gene_primary&size=500'
+url = 'https://rest.uniprot.org/uniprotkb/search?query=reviewed:true+AND+organism_id:9606&fields=accession,cc_function,xref_mim,xref_hgnc,gene_primary&size=500'
 
 # Configuration to fetch Uniprot data
 re_next_link = re.compile(r'<(.+)>; rel="next"')
@@ -46,11 +46,22 @@ def get_batch(batch_url):
         yield response
         batch_url = get_next_link(response.headers)
 
-def get_database_value(database, dataItem):
+def get_database_value(database, dataItem, gene_symbol):
     if "uniProtKBCrossReferences" in dataItem and len(dataItem["uniProtKBCrossReferences"]):
         for item in dataItem["uniProtKBCrossReferences"]:
-            if item["database"] == database:
+
+            # Example: {'database': 'HGNC', 'id': 'HGNC:4764', 'properties': [{'key': 'GeneName', 'value': 'H3-3A'}]
+            if database == "HGNC" and item["properties"][0]["value"] == gene_symbol:
                 return item["id"]
+
+            # Example: {'database': 'MIM', 'id': '601058', 'properties': [{'key': 'Type', 'value': 'gene'}]}
+            elif database == "MIM" and item["properties"][0]["value"] == "gene":
+                return item["id"]
+
+            # This checks if there is a HGNC ID
+            elif item["database"] == database and gene_symbol is None:
+                return item["id"]
+
     return None
 
 def is_protein_function_available(dataItem):
@@ -63,15 +74,18 @@ def fetch_all_data():
         current_batch_json = batch.json()
         for item in current_batch_json["results"]:
             # If protein function or HGNC id is not available then don't consider the data entry
-            if is_protein_function_available(item) and get_database_value("HGNC", item) is not None:
-                current_item = {}
-                current_item["gene_symbol"] = item["genes"][0]["geneName"]["value"]
-                current_item["accession"] = item["primaryAccession"]
-                current_item["protein_function"] = item["comments"][0]["texts"][0]["value"]
-                current_item["HGNC"] = get_database_value("HGNC", item)
-                current_item["MIM"] = get_database_value("MIM", item)
-                total_items.append(current_item)
-    print("Uniprot data successfully fetched via Uniprot API.")
+            if is_protein_function_available(item) and get_database_value("HGNC", item, None) is not None:
+                # 'genes' is a list which can have multiple values (gene symbols)
+                for gene in item["genes"]:
+                    current_item = {}
+                    current_item["gene_symbol"] = gene["geneName"]["value"]
+                    current_item["accession"] = item["primaryAccession"]
+                    current_item["protein_function"] = item["comments"][0]["texts"][0]["value"]
+                    current_item["HGNC"] = get_database_value("HGNC", item, current_item["gene_symbol"])
+                    current_item["MIM"] = get_database_value("MIM", item, current_item["gene_symbol"])
+                    total_items.append(current_item)
+
+    print(f"Uniprot data successfully fetched via Uniprot API ({len(total_items)} entries)")
     return total_items
 
 # Function to insert Uniprot data to database
