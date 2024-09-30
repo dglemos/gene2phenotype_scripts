@@ -133,6 +133,9 @@ def get_attrib_ids(host, port, db, password, user, attrib):
 
     attrib_id = cursor.fetchone()
 
+    if attrib_id is None:
+        raise ValueError("Source ID not found in the database.")
+
     return attrib_id[0]
 
 
@@ -207,6 +210,7 @@ def insert_details_into_meta(host, port, db, password, user, attrib):
     cursor = database.cursor()
     
     cursor.execute(insert_into_meta_query, (meta_key, datetime.datetime.now(), description, version, source_id, 0))
+    database.commit()
     cursor.close()
     database.close()
 
@@ -264,7 +268,7 @@ def get_source_details(host, port, db, password, user):
     
     if source_id is None:
         raise ValueError("Source ID not found in the database.")
-    
+ 
     source_id = source_id[0]
 
     cursor.close()
@@ -305,7 +309,7 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
 
         attrib : str
             An attribute key that will be mapped to a specific description ID from a predefined `attrib_mapping` dictionary.
-            This is used as the `description_id` in the query.
+            This is used as the `description_attrib_id` in the query.
 
         Functionality:
         -------------
@@ -330,7 +334,7 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
         The function assumes that the table and column names, as well as the structure of the input list, align with the schema.
     """
 
-    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, gene_id, score, source_id, description_id) VALUES (%s, %s, %s, %s, %s)
+    insert_into_gene_stats_query = """ INSERT into gene_stats (gene_symbol, gene_id, score, source_id, description_attrib_id) VALUES (%s, %s, %s, %s, %s)
 """
     source_id = get_source_details(host, port, db, password, user)
 
@@ -343,9 +347,8 @@ def insert_into_gene_stats(list_lines, host, port, db, password, user, attrib):
     for line in list_lines:
         if line[4] is not None:
             cursor.execute(insert_into_gene_stats_query, (line[0], line[4], line[2], source_id, attrib_value ))
-        else: 
-            print(line[0])
 
+    database.commit()
     cursor.close()
     database.close()
    
