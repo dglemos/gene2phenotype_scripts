@@ -261,6 +261,10 @@ def get_source_details(host, port, db, password, user):
 
     cursor.execute(get_source_query)
     source_id = cursor.fetchone()
+    
+    if source_id is None:
+        raise ValueError("Source ID not found in the database.")
+    
     source_id = source_id[0]
 
     cursor.close()
