@@ -6,8 +6,70 @@ import argparse
 import datetime
 import MySQLdb
 import xml.etree.ElementTree as ET
+import warnings
+
+"""
+    Script      : import_gene_disease.py
+
+    Description : Imports gene-disease associations from OMIM (Ensembl) and Mondo
+                  The script can be run in two modes:
+                    - import (default) : Runs a full import of the data. This mode should only be run on a newly created db.
+                    - update : Updates the data if necessary. This mode should be used in the release cycle.
+
+    Options
+                --host : Ensembl server where core db is stored
+                --port : Ensembl server's port
+                --user : Ensembl server's username
+                --database : Ensembl core db
+                --g2p_host : G2P server
+                --g2p_port : G2P server's port
+                --g2p_database : G2P database
+                --g2p_user : G2P server's username
+                --g2p_password : G2P server's password
+                --omim : option to import/update OMIM gene-disease data (default: 1)
+                --mondo : option to import/update Mondo gene-disease data (default: 1)
+                --mondo_file : Mondo owl file with gene-disease data (default: '')
+                --update : option to run the update mode (default: 0)
+"""
 
 debug = 0
+
+"""
+    Retrieve meta info from G2P db
+    Retrieve the latest OMIM and Mondo updates info
+"""
+def get_g2p_meta(db_host, db_port, db_name, user, password):
+    meta_info = {}
+
+    db = MySQLdb.connect(host=db_host, port=db_port, user=user, passwd=password, db=db_name)
+    cursor = db.cursor()
+
+    sql = """ SELECT s.name, m.version, m.date_update
+              FROM meta m
+              LEFT JOIN source s ON s.id = m.source_id
+              WHERE m.`key` = 'import_gene_disease'
+              ORDER BY m.date_update desc
+          """
+
+    cursor.execute(sql)
+    data = cursor.fetchall()
+    for row in data:
+        source_name = row[0]
+        version = row[1]
+        date_update = row[2]
+
+        if source_name not in meta_info:
+            meta_info[source_name] = { 
+                "data_version": version,
+                "date_update": date_update
+            }
+        elif date_update > meta_info[source_name]["date_update"]:
+            meta_info[source_name] = { 
+                "data_version": version,
+                "date_update": date_update
+            }
+
+    return meta_info
 
 """
     Retrieve OMIM gene disease data from Ensembl core db
@@ -195,6 +257,7 @@ def get_mondo_gene_diseases(file):
 
 """
     Insert Mondo gene disease data into G2P database
+    This method runs a full import
 """
 def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_diseases, mondo_version):
     sql_gene = """ SELECT l.id FROM locus l
@@ -220,22 +283,18 @@ def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
     source_id = None
     cursor.execute(sql_source)
     data = cursor.fetchall()
-    if data:
-        for row in data:
-            source_id = row[0]
+    for row in data:
+        source_id = row[0]
 
     for gd, gd_info in gene_diseases.items():
         cursor.execute(sql_gene, [f"HGNC:{gd}"])
         data = cursor.fetchall()
         gene_id = None
-        if data:
-            for row in data:
-                gene_id = row[0]
+        for row in data:
+            gene_id = row[0]
         if gene_id is not None:
             for info in gd_info:
                 cursor.execute(sql_insert, [gene_id, info['disease'], info['mondo_id'], source_id])
-
-                # print(gene_id, ",",info['disease'], ",",info['mondo_id'], ",",source_id)
 
     # Insert import info into meta
     cursor.execute(sql_meta, ['import_gene_disease',
@@ -247,6 +306,57 @@ def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
 
     db.commit()
     db.close()
+
+"""
+    Updates the Mondo gene-disease associations
+    Affected tables: gene_disease, meta
+
+    'gene_diseases' format example:
+        MONDO:1040051 : {'disease': 'IMPDH1-related retinopathy', 'hgnc_id': '6052'}
+"""
+def update_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_diseases, mondo_version):
+    g2p_current_data = {}
+
+    sql_query = """ SELECT gd.disease, gd.identifier, li.identifier
+                    FROM gene_disease gd
+                    LEFT JOIN locus l on l.id = gd.gene_id
+                    LEFT JOIN locus_identifier li on li.locus_id = l.id
+                    LEFT JOIN source s ON s.id = li.source_id
+                    LEFT JOIN source s_gd ON s_gd.id = gd.source_id
+                    WHERE s.name = 'HGNC' and s_gd.name = 'Mondo'
+                """
+
+    sql_ins_gene_disease = """  """
+
+    db = MySQLdb.connect(host=db_host, port=db_port, user=user, passwd=password, db=db_name)
+    cursor = db.cursor()
+    cursor.execute(sql_query)
+    data = cursor.fetchall()
+    for row in data:
+        mondo_id = row[1]
+
+        if mondo_id not in g2p_current_data:
+            g2p_current_data[mondo_id] = {
+                "disease": row[0],
+                "hgnc_id": re.sub("HGNC:", "", row[2])
+            }
+        else:
+            warnings.warn(f"Warning: Duplicated Mondo ID found in G2P '{mondo_id}'")
+
+    db.close()
+
+    # Iterate through the new mondo ids extracted from the owl file and
+    # compare them with the existing ids in G2P
+    for mondo, data in gene_diseases.items():
+        print("\n", mondo, ":", data)
+        if mondo in g2p_current_data:
+            print("Found in g2p:", mondo, "; from g2p:", g2p_current_data[mondo])
+            if data["disease"] != g2p_current_data[mondo]["disease"]:
+                print("> to update")
+        else:
+            print("New:", mondo)
+
+    # TODO: when we don't use the owl format, check which ids are obsolet, i.e. found in g2p but not in mondo
 
 """
     Fetch the Mondo data version from the owl file
@@ -281,6 +391,7 @@ def main():
     parser.add_argument("--omim", default=1, help="Import OMIM gene-disease data")
     parser.add_argument("--mondo", default=1, help="Import MONDO gene-disease data")
     parser.add_argument("--mondo_file", default='', help="MONDO owl file")
+    parser.add_argument("--update", default=0, help="Run data update. By default, the script imports all data from scratch")
 
     args = parser.parse_args()
 
@@ -294,24 +405,56 @@ def main():
     g2p_db_name = args.g2p_database
     g2p_user = args.g2p_user
     g2p_password = args.g2p_password
-    import_omim = args.omim
-    import_mondo = args.mondo
+    import_omim = int(args.omim)
+    import_mondo = int(args.mondo)
     mondo_file = args.mondo_file
+    update_mode = int(args.update)
 
+    # Set the type of run
+    run_import = 0
+    if update_mode == 0:
+        run_import = 1
+
+    # Fetch gene-disease import info from G2P
+    g2p_meta_info = get_g2p_meta(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password)
+
+    ### Import or update OMIM ###
     if import_omim == 1:
-        # Retrive OMIM gene-disease from Ensembl core db
-        print("Getting OMIM gene-disease associations...")
-        gene_diseases = get_mim_gene_diseases(db_host, int(db_port), db_name, user, password)
-        print("Getting OMIM gene-disease associations... done")
-
         # Get version from Ensembl db name
         version = re.search("[0-9]+", db_name)
 
-        # Insert OMIM gene-disease data into G2P db
-        print("Inserting OMIM gene-disease associations into G2P...")
-        insert_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, gene_diseases, version.group())
-        print("Inserting OMIM gene-disease associations into G2P... done")
+        # Compare G2P OMIM last update with Ensembl (OMIM) data version
+        if "Ensembl" in g2p_meta_info:
+            if run_import == 1:
+                print("Cannot run import: G2P already has OMIM gene-disease associations. Please run the script in update mode (--update 1)")
+                run_import = 0 # set flag to 0 to make sure we don't insert the data again
 
+            if g2p_meta_info["Ensembl"]["data_version"] >= version.group() and update_mode == 1:
+                print("Omim gene-disease data is the latest. Skipping update.")
+                update_mode = 0 # set flag to 0 because data in G2P is already updated
+
+        # Only fetch OMIM data from Ensembl if import/update can be done
+        if update_mode == 1 or run_import == 1:
+            # Retrive OMIM gene-disease from Ensembl core db
+            print("Getting OMIM gene-disease associations...")
+            gene_diseases = get_mim_gene_diseases(db_host, int(db_port), db_name, user, password)
+            print("Getting OMIM gene-disease associations... done")
+
+        # Run the import
+        if run_import == 1:
+            print("> Running OMIM full import")
+            # Insert OMIM gene-disease data into G2P db
+            print("Inserting OMIM gene-disease associations into G2P...")
+            insert_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, gene_diseases, version.group())
+            print("Inserting OMIM gene-disease associations into G2P... done")
+
+        # Run the update
+        elif update_mode == 1:
+            print("> Running OMIM update")
+            # Update OMIM gene-disease data in G2P db
+            # TODO
+
+    ### Import or update Mondo ###
     if import_mondo == 1:
         """
             Input file: it is necessary to perform some cleaning before the import.
@@ -323,25 +466,49 @@ def main():
 
         # Fetch Mondo version from file
         mondo_version = fetch_mondo_version(mondo_file)
+        mondo_version_obj = datetime.datetime.strptime(mondo_version, "%Y-%m-%d")
 
-        # Retrive Mondo gene-disease from Mondo owl file
-        print("Getting Mondo gene-disease associations...")
-        mondo_gene_diseases = get_mondo_gene_diseases(mondo_file)
-        print("Getting Mondo gene-disease associations... done")
+        # Compare G2P OMIM last update with Ensembl (OMIM) data version
+        if "Mondo" in g2p_meta_info:
+            if run_import == 1:
+                print("Cannot run import: G2P already has Mondo gene-disease associations. Please run the script in update mode (--update 1)")
+                run_import = 0 # set flag to 0 to make sure we don't insert the data again
 
-        # Format data
-        new_mondo_data = {}
-        for mondo, data in mondo_gene_diseases.items():
-            if data["hgnc_id"] not in new_mondo_data:
-                new_mondo_data[data["hgnc_id"]] = [{ "mondo_id": mondo, "disease": data["disease"] }]
-            else:
-                new_mondo_data[data["hgnc_id"]].append({ "mondo_id": mondo, "disease": data["disease"] })
-            
-        # Insert Mondo gene-disease data into G2P db
-        print("Inserting Mondo gene-disease associations into G2P...")
-        insert_mondo_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, new_mondo_data, mondo_version)
-        print("Inserting Mondo gene-disease associations into G2P... done")
+            g2p_mondo_version_obj = datetime.datetime.strptime(g2p_meta_info["Mondo"]["data_version"], "%Y-%m-%d")
+            if g2p_mondo_version_obj >= mondo_version_obj and update_mode == 1:
+                print("Mondo gene-disease data is the latest. Skipping update.")
+                update_mode = 0 # set flag to 0 because data in G2P is already updated
 
+        # Only fetch OMIM data from Ensembl if import/update can be done
+        if update_mode == 1 or run_import == 1:
+            # Retrive Mondo gene-disease from Mondo owl file
+            print("Getting Mondo gene-disease associations...")
+            mondo_gene_diseases = get_mondo_gene_diseases(mondo_file)
+            print("Getting Mondo gene-disease associations... done")
+
+        # Run the import
+        if run_import == 1:
+            print("> Running Mondo full import")
+
+            # Format data for the full import
+            new_mondo_data = {}
+            for mondo, data in mondo_gene_diseases.items():
+                if data["hgnc_id"] not in new_mondo_data:
+                    new_mondo_data[data["hgnc_id"]] = [{ "mondo_id": mondo, "disease": data["disease"] }]
+                else:
+                    new_mondo_data[data["hgnc_id"]].append({ "mondo_id": mondo, "disease": data["disease"] })
+
+            # Insert Mondo gene-disease data into G2P db
+            print("Inserting Mondo gene-disease associations into G2P...")
+            insert_mondo_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, new_mondo_data, mondo_version)
+            print("Inserting Mondo gene-disease associations into G2P... done")
+
+        # Run the update
+        elif update_mode == 1:
+            print("> Running Mondo update")
+
+            # Update Mondo gene-disease data in G2P db
+            update_mondo_gene_diseases(g2p_db_host, g2p_db_port, g2p_db_name, g2p_user, g2p_password, mondo_gene_diseases, mondo_version)
 
 if __name__ == '__main__':
     main()
