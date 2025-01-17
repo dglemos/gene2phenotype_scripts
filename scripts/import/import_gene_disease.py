@@ -599,10 +599,11 @@ def main():
         # Get version from Ensembl db name
         version = re.search("[0-9]+", db_name)
         print(f"INFO: going to import OMIM data from Ensembl {version.group()}")
-        print(f"INFO: current OMIM data is from Ensembl {g2p_meta_info["Ensembl"]["data_version"]}")
 
         # Compare G2P OMIM last update with Ensembl (OMIM) data version
         if "Ensembl" in g2p_meta_info:
+            print(f"INFO: current OMIM data is from Ensembl {g2p_meta_info["Ensembl"]["data_version"]}")
+
             if run_import == 1:
                 print("Cannot run import: G2P already has OMIM gene-disease associations. Please run the script in update mode (--update 1)")
                 run_import = 0 # set flag to 0 to make sure we don't insert the data again
