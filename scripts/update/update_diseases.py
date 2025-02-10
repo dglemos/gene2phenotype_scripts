@@ -70,7 +70,7 @@ def dump_data(db_host, db_port, db_name, user, password):
     return gene_records, diseases
 
 def read_file(file, gene_records, diseases):
-    file_output = "gene_disease_not_updated.txt"
+    file_output = "gene_disease_found_in_g2p.txt"
     file_not_updated = "diseases_not_updated.txt"
     diseases_to_update = []
 
@@ -103,7 +103,12 @@ def read_file(file, gene_records, diseases):
                     to_update = 0
                     list_disease = []
                     for record in db_data:
-                        if record["disease_name"].endswith(current_disease) and record["disease_name"] != new_disease:
+                        # In the old system most of the disease names don't include the '<gene>-related' in the name
+                        # to compare disease names we have to compare the end of the name
+                        # if ((record["disease_name"].endswith(current_disease))
+                        if ((record["disease_name"].lower() == current_disease.lower() or record["disease_name"].endswith("related "+current_disease)
+                             or record["disease_name"].endswith("associated "+current_disease))
+                            and record["disease_name"] != new_disease):
                             to_update = 1
                             # print("-> to update (record from db):", record)
                             # Check if new disease name is already in the db
