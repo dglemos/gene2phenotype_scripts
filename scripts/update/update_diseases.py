@@ -78,10 +78,8 @@ def read_file(file, gene_records, diseases):
         wr.write("gene symbol\tdisease name\tdisease name formatted\tdiseases found in G2P linked to gene\n")
 
         # Header:
-        # gene symbol, gene mim, disease name, disease_name_formatted, Updated , disease mim, confidence category,
-        # allelic requirement, mutation consequence, phenotypes, organ specificity list, pmids, panel, prev symbols,
-        # hgnc id, gene disease pair entry date, cross cutting modifier, mutation consequence flag, confidence value,
-        # flag, comments, variant consequence, disease ontology
+        # gene symbol, disease name, disease name formatted, Updated
+        # Other columns are ignored
         for line in fh:
             if not line.startswith("gene symbol"):
                 data = line.split("\t")
