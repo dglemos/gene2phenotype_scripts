@@ -19,19 +19,11 @@ import configparser
                     - update : Updates the data if necessary. This mode should be used in the release cycle.
 
     Options
-                --host : Ensembl server where core db is stored
-                --port : Ensembl server's port
-                --user : Ensembl server's username
-                --database : Ensembl core db
-                --g2p_host : G2P server
-                --g2p_port : G2P server's port
-                --g2p_database : G2P database
-                --g2p_user : G2P server's username
-                --g2p_password : G2P server's password
+                --config: Config file with connection details to Ensembl and G2P databases (mandatory)
                 --omim : option to import/update OMIM gene-disease data (default: 1)
                 --mondo : option to import/update Mondo gene-disease data (default: 1)
-                --mondo_file : Mondo owl file with gene-disease data (default: '')
-                --update : option to run the update mode (default: 0)
+                --mondo_file : Mondo owl file with gene-disease data. Supported formats: owl, csv (default: '')
+                --update : option to run the script in update mode (default: 0)
 """
 
 debug = 0
