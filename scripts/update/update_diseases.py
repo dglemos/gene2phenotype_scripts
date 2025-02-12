@@ -94,7 +94,7 @@ def read_file(file, gene_records, diseases, dryrun):
                 # Check if the record can be found in G2P
                 try:
                     db_data = gene_records[gene_symbol]
-                except:
+                except KeyError:
                     print(f"WARNING: {gene_symbol} not found in G2P")
                 else:
                     to_update = 0
