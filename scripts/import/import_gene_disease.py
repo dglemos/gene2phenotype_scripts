@@ -8,6 +8,7 @@ import MySQLdb
 import xml.etree.ElementTree as ET
 import warnings
 import csv
+import configparser
 
 """
     Script      : import_gene_disease.py
@@ -553,17 +554,31 @@ def fetch_mondo_version(file):
 
 
 def main():
+    """
+        Params:
+                --config : Config file name containing the Ensembl and G2P databases connection info (mandatory)
+                        File format is the following:
+                            [ensembl_database]
+                            host = <>
+                            port = <>
+                            user = <>
+                            password = <>
+                            database = <>
+
+                            [g2p_database]
+                            g2p_host = <>
+                            g2p_port = <>
+                            g2p_database = <>
+                            g2p_user = <>
+                            g2p_password = <>
+
+                --omim: Option to import OMIM gene-disease data (default=1)
+                --mondo: Option to import MONDO gene-disease data (default=1)
+                --mondo_file: MONDO file. Supported formats: owl, csv. Only necessary to import mondo (--mondo).
+                --update: Option to run the script in update mode. By default, the script runs a full import (default=0)
+    """
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--host", required=False, help="Ensembl core database host")
-    parser.add_argument("--port", required=False, help="Ensembl core host port")
-    parser.add_argument("--database", required=False, help="Ensembl core database name")
-    parser.add_argument("--user", required=False, help="Username")
-    parser.add_argument("--password", default='', help="Password (default: '')")
-    parser.add_argument("--g2p_host", required=True, help="G2P database host")
-    parser.add_argument("--g2p_port", required=True, help="G2P host port")
-    parser.add_argument("--g2p_database", required=True, help="G2P database name")
-    parser.add_argument("--g2p_user", required=True, help="Username")
-    parser.add_argument("--g2p_password", default='', help="Password (default: '')")
+    parser.add_argument("--config", required=True, help="Config file with details to Ensembl and G2P databases")
     parser.add_argument("--omim", default=1, help="Import OMIM gene-disease data")
     parser.add_argument("--mondo", default=1, help="Import MONDO gene-disease data")
     parser.add_argument("--mondo_file", default='', help="MONDO file in the format: owl or csv")
@@ -571,20 +586,26 @@ def main():
 
     args = parser.parse_args()
 
-    db_host = args.host
-    db_port = args.port
-    db_name = args.database
-    user = args.user
-    password = args.password
-    g2p_db_host = args.g2p_host
-    g2p_db_port = int(args.g2p_port)
-    g2p_db_name = args.g2p_database
-    g2p_user = args.g2p_user
-    g2p_password = args.g2p_password
+    config_file = args.config
     import_omim = int(args.omim)
     import_mondo = int(args.mondo)
     mondo_file = args.mondo_file
     update_mode = int(args.update)
+
+    # Load the config file
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    db_host = config['ensembl_database']['host']
+    db_port = config['ensembl_database']['port']
+    db_name = config['ensembl_database']['database']
+    user = config['ensembl_database']['user']
+    password = config['ensembl_database']['password']
+    g2p_db_host = config['g2p_database']['g2p_host']
+    g2p_db_port = int(config['g2p_database']['g2p_port'])
+    g2p_db_name = config['g2p_database']['g2p_database']
+    g2p_user = config['g2p_database']['g2p_user']
+    g2p_password = config['g2p_database']['g2p_password']
 
     # Set the type of run
     run_import = 0
