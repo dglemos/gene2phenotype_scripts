@@ -212,13 +212,17 @@ def main():
                 --file : Tab delimited file with all diseases to be updated (mandatory)
                     File format is the following:
                         gene symbol\tdisease name\tdisease name formatted\tUpdated
+                
+                --api_username: Username to connect to the G2P API (mandatory)
+                --api_password: Password to connect to the G2P API
+                --dryrun: Test script without running the updates
     """
 
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--config", required=True, help="Config file")
     parser.add_argument("--file", required=True, help="Tab delimited file with all diseases to be updated")
     parser.add_argument("--api_username", required=True, help="Username to connect to the G2P API")
-    parser.add_argument("--api_password", required=True, help="Username to connect to the G2P API")
+    parser.add_argument("--api_password", required=True, help="Password to connect to the G2P API")
     parser.add_argument("--dryrun", required=False, default=0, help="Option to test update")
     args = parser.parse_args()
 
