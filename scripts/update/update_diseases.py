@@ -69,7 +69,7 @@ def dump_data(db_host, db_port, db_name, user, password):
 
     return gene_records, diseases
 
-def read_file(file, gene_records, diseases):
+def read_file(file, gene_records, diseases, dryrun):
     file_output = "gene_disease_found_in_g2p.txt"
     file_not_updated = "diseases_not_updated.txt"
     diseases_to_update = []
@@ -97,18 +97,19 @@ def read_file(file, gene_records, diseases):
                 except:
                     print(f"WARNING: {gene_symbol} not found in G2P")
                 else:
-                    # print(f"\n{gene_symbol}; {current_disease} (New: {new_disease})")
                     to_update = 0
                     list_disease = []
+
+                    if dryrun:
+                        print(f"\n{gene_symbol}; {current_disease} (New disease: {new_disease})")
+
                     for record in db_data:
                         # In the old system most of the disease names don't include the '<gene>-related' in the name
                         # to compare disease names we have to compare the end of the name
-                        # if ((record["disease_name"].endswith(current_disease))
                         if ((record["disease_name"].lower() == current_disease.lower() or record["disease_name"].endswith("related "+current_disease)
                              or record["disease_name"].endswith("associated "+current_disease))
                             and record["disease_name"] != new_disease):
                             to_update = 1
-                            # print("-> to update (record from db):", record)
                             # Check if new disease name is already in the db
                             if new_disease in diseases:
                                 # If the new disease name already exists then add it to replace existing name
@@ -120,9 +121,13 @@ def read_file(file, gene_records, diseases):
                                         "new_disease_id": diseases[new_disease]["disease_id"]
                                     }
                                 )
+
+                                if dryrun:
+                                    print(f"Update disease in lgd table -> replace disease_id: {record['disease_id']} by {diseases[new_disease]['disease_id']}")
+
                             elif gene_symbol not in new_disease:
                                 # This should not happen
-                                # Action: print this warning and not update
+                                # Action: print to file 'diseases_not_updated.txt'
                                 wr_diseases.write("Gene not found in new disease name\t"+line)
                             else:
                                 # Create list of diseases to update
@@ -132,6 +137,8 @@ def read_file(file, gene_records, diseases):
                                         "name": new_disease
                                     }
                                 )
+                                if dryrun:
+                                    print(f"Update disease name -> disease_id: {record['disease_id']}; current name: {current_disease}; new name: {new_disease}")
 
                         else:
                             list_disease.append(record["disease_name"])
@@ -142,7 +149,7 @@ def read_file(file, gene_records, diseases):
 
     return diseases_to_update
 
-def update_diseases(diseases_to_update, config_api):
+def update_diseases(diseases_to_update, api_username, api_password, api_url):
     """
         Method to update the disease names.
         This method calls the gene2phenotype api and updates the database defined in gene2phenotype_project/config.ini
@@ -152,14 +159,14 @@ def update_diseases(diseases_to_update, config_api):
     login_url = "login/"
 
     data = {
-        "username": config_api["username"],
-        "password": config_api["password"]
+        "username": api_username,
+        "password": api_password
     }
 
-    response = requests.post(config_api["api_url"] + login_url, json=data)
+    response = requests.post(api_url + login_url, json=data)
     if response.status_code == 200:
         try:
-            response_update = requests.post(config_api["api_url"] + disease_url, json=diseases_to_update, cookies=response.cookies)
+            response_update = requests.post(api_url + disease_url, json=diseases_to_update, cookies=response.cookies)
             if response_update.status_code == 200:
                 response_json = response_update.json()
                 print("Diseases updated successfully:", response_json)
@@ -174,7 +181,7 @@ def update_diseases(diseases_to_update, config_api):
                                 "new_disease_id": error['existing_id']
                             }
                         )
-                    response_update_lgd = requests.post(config_api["api_url"] + lgd_disease_url, json=lgd_disease_to_update, cookies=response.cookies)
+                    response_update_lgd = requests.post(api_url + lgd_disease_url, json=lgd_disease_to_update, cookies=response.cookies)
                     if response_update_lgd.status_code == 200:
                         print("LGD records updated successfully:", response_update_lgd.json())
                     else:
@@ -201,8 +208,6 @@ def main():
 
                             [api]
                             api_url = <>
-                            username = <>
-                            password = <>
 
                 --file : Tab delimited file with all diseases to be updated (mandatory)
                     File format is the following:
@@ -212,10 +217,16 @@ def main():
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--config", required=True, help="Config file")
     parser.add_argument("--file", required=True, help="Tab delimited file with all diseases to be updated")
+    parser.add_argument("--api_username", required=True, help="Username to connect to the G2P API")
+    parser.add_argument("--api_password", required=True, help="Username to connect to the G2P API")
+    parser.add_argument("--dryrun", required=False, default=0, help="Option to test update")
     args = parser.parse_args()
 
     file = args.file
     config_file = args.config
+    dryrun = args.dryrun
+    api_username = args.api_username
+    api_password = args.api_password
 
     # Load the config file
     config = configparser.ConfigParser()
@@ -226,6 +237,7 @@ def main():
     db_name = config['database']['name']
     user = config['database']['user']
     password = config['database']['password']
+    api_url = config['api']['api_url']
 
     print("Dump data from G2P...")
     gene_records, diseases = dump_data(db_host, int(db_port), db_name, user, password)
@@ -240,12 +252,13 @@ def main():
                 sys.exit(f"Error: File format is incorrect. Found: {header[:4]}; Expected: {expected_columns}")
 
         print("Parsing diseases to update...")
-        diseases_to_update = read_file(file, gene_records, diseases)
+        diseases_to_update = read_file(file, gene_records, diseases, dryrun)
         print("Parsing diseases to update... done\n")
 
-        print("Updating disease names...")
-        update_diseases(diseases_to_update, config['api'])
-        print("Updating disease names... done\n")
+        if not dryrun:
+            print("Updating disease names...")
+            update_diseases(diseases_to_update, api_username, api_password, api_url)
+            print("Updating disease names... done\n")
 
     else:
         print(f"Input file is invalid '{file}'")
