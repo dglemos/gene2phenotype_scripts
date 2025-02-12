@@ -214,8 +214,8 @@ def main():
                         gene symbol\tdisease name\tdisease name formatted\tUpdated
                 
                 --api_username: Username to connect to the G2P API (mandatory)
-                --api_password: Password to connect to the G2P API
-                --dryrun: Test script without running the updates
+                --api_password: Password to connect to the G2P API (mandatory)
+                --dryrun: Test script without running the updates (default: 0)
     """
 
     parser = argparse.ArgumentParser(description="")
