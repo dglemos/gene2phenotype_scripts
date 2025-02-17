@@ -16,6 +16,8 @@ import configparser
     Description : Imports gene-disease associations from OMIM (Ensembl) and Mondo
                   The script can be run in two modes:
                     - import (default) : Runs a full import of the data. This mode should only be run on a newly created db.
+                                         The script runs a check before this mode is run to make sure the db doesn't include gene-disease
+                                         associations beforehand.
                     - update : Updates the data if necessary. This mode should be used in the release cycle.
 
     Options
@@ -41,7 +43,7 @@ def get_g2p_meta(db_host, db_port, db_name, user, password):
     sql = """ SELECT s.name, m.version, m.date_update
               FROM meta m
               LEFT JOIN source s ON s.id = m.source_id
-              WHERE m.`key` = 'import_gene_disease'
+              WHERE m.`key` = 'import_gene_disease_omim' OR m.`key` = 'import_gene_disease_mondo'
               ORDER BY m.date_update desc
           """
 
@@ -144,7 +146,7 @@ def insert_mim_gene_diseases(db_host, db_port, db_name, user, password, gene_dis
                 cursor.execute(sql_insert, [gene_id, info['disease'], info['mim_id'], source_ids['OMIM']])
 
     # Insert import info into meta
-    cursor.execute(sql_meta, ['import_gene_disease',
+    cursor.execute(sql_meta, ['import_gene_disease_omim',
                               datetime.datetime.now(),
                               0,
                               'Import OMIM gene disease associations from Ensembl core db',
@@ -239,7 +241,7 @@ def update_mim_gene_diseases(db_host, db_port, db_name, user, password, gene_dis
                     cursor.execute(sql_ins_gene_disease, [gene_id, omim_data["disease"], omim_data["mim_id"], source_ids['OMIM']])
 
     # Insert import info into meta
-    cursor.execute(sql_meta, ['import_gene_disease',
+    cursor.execute(sql_meta, ['import_gene_disease_omim',
                               datetime.datetime.now(),
                               0,
                               'Import OMIM gene disease associations from Ensembl core db',
@@ -393,7 +395,7 @@ def insert_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
                 cursor.execute(sql_insert, [gene_id, info['disease'], info['mondo_id'], source_id])
 
     # Insert import info into meta
-    cursor.execute(sql_meta, ['import_gene_disease',
+    cursor.execute(sql_meta, ['import_gene_disease_mondo',
                               datetime.datetime.now(),
                               0,
                               'Import Mondo gene disease associations',
@@ -505,7 +507,7 @@ def update_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
                 cursor.execute(sql_del_gene_disease, [mondo_g2p, source_id])
 
     # Insert import info into meta
-    cursor.execute(sql_meta, ['import_gene_disease',
+    cursor.execute(sql_meta, ['import_gene_disease_mondo',
                               datetime.datetime.now(),
                               0,
                               'Import Mondo gene disease associations',
