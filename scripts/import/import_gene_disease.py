@@ -235,10 +235,10 @@ def update_mim_gene_diseases(db_host, db_port, db_name, user, password, gene_dis
         for omim_data in list_omim_data:
             if stable_id in g2p_all_transcripts:
                 gene_id = g2p_all_transcripts[stable_id]
-                key = f"{omim_data["mim_id"]}---{stable_id}"
+                key = f"{omim_data['mim_id']}---{stable_id}"
                 if key not in g2p_current_data:
-                    print(f"Inserting new OMIM ID {omim_data["mim_id"]}; {omim_data["disease"]}; {stable_id} (gene id: {gene_id})")
-                    cursor.execute(sql_ins_gene_disease, [gene_id, omim_data["disease"], omim_data["mim_id"], source_ids['OMIM']])
+                    print(f"Inserting new OMIM ID {omim_data['mim_id']}; {omim_data['disease']}; {stable_id} (gene id: {gene_id})")
+                    cursor.execute(sql_ins_gene_disease, [gene_id, omim_data['disease'], omim_data['mim_id'], source_ids['OMIM']])
 
     # Insert import info into meta
     cursor.execute(sql_meta, ['import_gene_disease_omim',
@@ -277,10 +277,10 @@ def get_mondo_gene_diseases(file, file_format):
 
                     if start_class == 0:
                         start_class = 1
-                        
+
                         if debug == 1:
                             ET.dump(elem)
-                        
+
                         for i in elem.iter():
                             # Get mondo ID
                             if i.tag == "{http://www.geneontology.org/formats/oboInOwl#}id" and i.text is not None:
@@ -490,12 +490,13 @@ def update_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
                 print(f"Updating {mondo}")
                 cursor.execute(sql_upd_gene_disease, [data["disease"], mondo])
         else:
-            gene_id = g2p_all_hgnc_ids[data["hgnc_id"]]
-            print(f"Inserting new {mondo}; {data["disease"]}; HGNC:{data["hgnc_id"]} (gene id: {gene_id})")
-            if data["hgnc_id"] in g2p_all_hgnc_ids:
-                cursor.execute(sql_ins_gene_disease, [gene_id, data["disease"], mondo, source_id])
+            try:
+                gene_id = g2p_all_hgnc_ids[data["hgnc_id"]]
+            except KeyError:
+                print(f"Skipping {mondo}: could not find HGNC:{data['hgnc_id']} in G2P")
             else:
-                print(f"  Skipping {mondo}: could not find HGNC:{data["hgnc_id"]} in G2P")
+                print(f"Inserting new {mondo}; {data['disease']}; HGNC:{data['hgnc_id']} (gene id: {gene_id})")
+                cursor.execute(sql_ins_gene_disease, [gene_id, data["disease"], mondo, source_id])  
 
     # Check which Mondo IDs are obsolet, i.e. they are found in G2P but not in Mondo csv input file
     # Note: this update is only run when we import from the csv file - this format is more reliable
@@ -520,11 +521,8 @@ def update_mondo_gene_diseases(db_host, db_port, db_name, user, password, gene_d
 """
     Fetch the Mondo data version from the owl or csv file
 """
-def fetch_mondo_version(file):
+def fetch_mondo_version(file, file_format):
     version = None
-
-    # Detect file format
-    file_format = re.sub(r".*\.", "", file)
 
     if file_format != "owl" and file_format != "csv":
         sys.exit("ERROR: Invalid Mondo file format. Accepted formats are: owl and csv")
@@ -544,7 +542,7 @@ def fetch_mondo_version(file):
                     data_row = line.split(",")
                     version = data_row[0].replace("##", "")
 
-    return version, file_format
+    return version
 
 
 def main():
@@ -617,7 +615,7 @@ def main():
 
         # Compare G2P OMIM last update with Ensembl (OMIM) data version
         if "Ensembl" in g2p_meta_info:
-            print(f"INFO: current OMIM data is from Ensembl {g2p_meta_info["Ensembl"]["data_version"]}")
+            print(f"INFO: current OMIM data is from Ensembl {g2p_meta_info['Ensembl']['data_version']}")
 
             if run_import == 1:
                 print("Cannot run import: G2P already has OMIM gene-disease associations. Please run the script in update mode (--update 1)")
@@ -658,8 +656,11 @@ def main():
             The owl file can be downloaded from https://mondo.monarchinitiative.org/pages/download/
         """
 
+        # Detect file format
+        file_format = re.sub(r".*\.", "", mondo_file)
+
         # Fetch Mondo version from file
-        mondo_version, file_format = fetch_mondo_version(mondo_file)
+        mondo_version = fetch_mondo_version(mondo_file, file_format)
         if mondo_version is None:
             sys.exit(f"ERROR: could not detect Mondo version from input file '{mondo_file}'")
 
@@ -678,6 +679,8 @@ def main():
 
         # Only fetch OMIM data from Ensembl if import/update can be done
         if update_mode == 1 or run_import == 1:
+            # TODO: split the input file - one file per mondo ID
+
             # Retrive Mondo gene-disease from Mondo owl or csv file
             print("Getting Mondo gene-disease associations...")
             mondo_gene_diseases = get_mondo_gene_diseases(mondo_file, file_format)
